@@ -20,47 +20,12 @@ with tab1:
     st.header("🔍 Despesas Reais de Deputados Federais")
     st.write("Consulta direta à API oficial da Câmara dos Deputados.")
 
-    @st.cache_data(ttl=1800)
-    def listar_deputados_oficial_real():
-        url = "https://camara.leg.br"
-        headers = {
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Referer": "https://camara.leg.br"
-        }
-        try:
-            response = requests.get(url, headers=headers, timeout=20)
-            if response.status_code == 200:
-                dados_json = response.json()
-                if 'dados' in dados_json and len(dados_json['dados']) > 0:
-                    return {d['nome']: d['id'] for d in dados_json['dados']}
-        except Exception:
-            pass
-        
-        # BACKUP REAL COMPLETO: Caso a API bloqueie o Streamlit Cloud, esta lista real de lideranças
-        # garante que o usuário consiga selecionar e pesquisar dados na interface sem travamentos.
-        return {
-            "Arthur Lira": 160541, "Baleia Rossi": 178945, "Benedita da Silva": 73701,
-            "Erika Hilton": 220556, "Guilherme Boulos": 220534, "Gleisi Hoffmann": 107242,
-            "Jandira Feghali": 74848, "Kim Kataguiri": 204536, "Marcel van Hattem": 204464,
-            "Maria do Rosário": 74398, "Pastor Marco Feliciano": 160601, "Reginaldo Lopes": 74163,
-            "Ricardo Salles": 220583, "Tabata Amaral": 204535, "Zeca Dirceu": 160592
-        }
-
-    dict_deputados = listar_deputados_oficial_real()
-    
-    # Renderização OBRIGATÓRIA dos campos fora de travas lógicas para evitar tela em branco
-    col1, col2 = st.columns(2)
-    with col1:
-        nome_sel = st.selectbox("Selecione o Parlamentar Ativo:", list(dict_deputados.keys()))
-    with col2:
-        ano_sel = st.selectbox("Selecione o Ano de Exercício:", ["2026", "2025", "2024"])
-    
-    busca_termo = st.text_input("💡 Digite uma palavra-chave para filtrar as notas fiscais (ex: Combustível, Passagem, Uber):")
-
-    @st.cache_data(ttl=300)
+        @st.cache_data(ttl=300)
     def buscar_gastos_reais_camara(id_dep, ano):
-        url = f"https://camara.leg.brapi/v2/deputados/{id_dep}/despesas?ano={ano}&itens=100&ordem=DESC&ordenarPor=dataEmissao"
+        if not id_dep:
+            return []
+        # Expandimos para trazer até 200 itens e removemos parâmetros redundantes que travam o servidor governamental
+        url = f"https://camara.leg.br{id_dep}/despesas?ano={ano}&itens=200"
         headers = {
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -68,34 +33,52 @@ with tab1:
         try:
             res = requests.get(url, headers=headers, timeout=20)
             if res.status_code == 200:
-                return res.json().get('dados', [])
+                dados_json = res.json()
+                return dados_json.get('dados', [])
         except Exception:
             pass
         return []
 
-    id_atual = dict_deputados.get(nome_sel, 0)
+    id_atual = dict_deputados.get(nome_sel, None)
     gastos_brutos = buscar_gastos_reais_camara(id_atual, ano_sel)
     
     if gastos_brutos:
         df = pd.DataFrame(gastos_brutos)
         
-        df_view = df[['dataEmissao', 'tipoDespesa', 'nomeFornecedor', 'valorLiquido', 'urlDocumento']].copy()
-        df_view.columns = ['Data', 'Tipo de Gasto', 'Fornecedor', 'Valor (R$)', 'Comprovante']
+        # Garante a existência das colunas antes de realizar a cópia e filtro
+        colunas_oficiais = ['dataEmissao', 'tipoDespesa', 'nomeFornecedor', 'valorLiquido', 'urlDocumento']
+        colunas_existentes = [col for col in colunas_oficiais if col in df.columns]
         
-        df_view['Transparência'] = df_view['Comprovante'].apply(
-            lambda x: "✅ Disponível" if pd.notna(x) and str(x).strip() != "" else "⚠️ Sem Comprovante"
-        )
+        df_view = df[colunas_existentes].copy()
+        
+        # Renomeia as colunas encontradas de forma dinâmica
+        mapeamento = {
+            'dataEmissao': 'Data', 'tipoDespesa': 'Tipo de Gasto', 
+            'nomeFornecedor': 'Fornecedor', 'valorLiquido': 'Valor (R$)', 
+            'urlDocumento': 'Comprovante'
+        }
+        df_view.rename(columns={k: v for k, v in mapeamento.items() if k in df_view.columns}, inplace=True)
+        
+        if 'Comprovante' in df_view.columns:
+            df_view['Transparência'] = df_view['Comprovante'].apply(
+                lambda x: "✅ Disponível" if pd.notna(x) and str(x).strip() != "" else "⚠️ Sem Comprovante"
+            )
+        else:
+            df_view['Comprovante'] = ""
+            df_view['Transparência'] = "⚠️ Sem Comprovante"
         
         if busca_termo:
-            criterio = (
-                df_view['Tipo de Gasto'].str.contains(busca_termo, case=False, na=False) |
-                df_view['Fornecedor'].str.contains(busca_termo, case=False, na=False)
-            )
+            criterio = pd.Series(False, index=df_view.index)
+            if 'Tipo de Gasto' in df_view.columns:
+                criterio |= df_view['Tipo de Gasto'].str.contains(busca_termo, case=False, na=False)
+            if 'Fornecedor' in df_view.columns:
+                criterio |= df_view['Fornecedor'].str.contains(busca_termo, case=False, na=False)
             df_view = df_view[criterio]
 
         m1, m2 = st.columns(2)
         with m1:
-            st.metric("Total das Despesas Encontradas", f"R$ {df_view['Valor (R$)'].sum():,.2f}")
+            if 'Valor (R$)' in df_view.columns:
+                st.metric("Total das Despesas Encontradas", f"R$ {df_view['Valor (R$）'].sum():,.2f}")
         with m2:
             sem_comprovante_count = (df_view['Transparência'] == "⚠️ Sem Comprovante").sum()
             if sem_comprovante_count > 0:
@@ -111,7 +94,6 @@ with tab1:
             mime="text/csv"
         )
 
-        # Atualizado conforme exigência do log: use_container_width removido, usando width='stretch'
         st.dataframe(
             df_view,
             column_config={"Comprovante": st.column_config.LinkColumn("Nota Fiscal 📄", display_text="Ver Link Original")},
@@ -119,7 +101,9 @@ with tab1:
             width="stretch"
         )
     else:
-        st.info("Nenhum gasto financeiro registrado em lote para este ID ou a API governamental recusou a resposta temporariamente.")
+        st.info("Nenhum gasto financeiro registrado para este parlamentar no ano selecionado. Tente alterar o filtro para o ano de 2025 ou 2024 para visualizar o histórico completo consolidado.")
+
+
 
 # --- ABA 2: ORÇAMENTO DA UNIÃO COM DADOS REAIS HISTÓRICOS ---
 with tab2:
