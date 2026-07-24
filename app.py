@@ -20,29 +20,47 @@ with tab1:
     st.header("🔍 Busca de Notas Fiscais e Alertas de Transparência")
     st.write("Pesquise por termos e verifique a existência de documentos comprobatórios dos gastos.")
 
-    @st.cache_data(ttl=3600)
-    def listar_deputados():
-        url = "https://camara.leg.br"
-        response = requests.get(url, headers={"Accept": "application/json"})
-        return {d['nome']: d['id'] for d in response.json()['dados']} if response.status_code == 200 else {}
-
-    dict_deputados = listar_deputados()
     
-    if dict_deputados:
-        col1, col2 = st.columns(2)
-        with col1:
-            nome_sel = st.selectbox("Selecione o Parlamentar:", list(dict_deputados.keys()))
-        with col2:
-            ano_sel = st.selectbox("Selecione o Ano:", [2026, 2025, 2024], index=0)
-        
-        busca_termo = st.text_input("💡 Filtrar por palavra-chave (ex: Combustível, Alimentação, Passagem):")
+    
+    # --- SUBSTITUA AS FUNÇÕES DE BUSCA POR ESTAS CORRIGIDAS ---
 
-        @st.cache_data(ttl=600)
-        def buscar_gastos(id_dep, ano):
-            url = f"https://camara.leg.br{id_dep}/despesas?ano={ano}&itens=100"
-            res = requests.get(url, headers={"Accept": "application/json"})
-            return res.json()['dados'] if res.status_code == 200 else []
+@st.cache_data(ttl=3600)
+def listar_deputados():
+    url = "https://camara.leg.br"
+    # Adicionamos uma identificação de User-Agent profissional para o Streamlit Cloud não ser bloqueado
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            # Valida se o conteúdo de fato é texto em formato JSON antes de decodificar
+            dados_json = response.json()
+            if 'dados' in dados_json:
+                return {d['nome']: d['id'] for d in dados_json['dados']}
+        return {}
+    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+        # Se falhar, não quebra o app, apenas retorna vazio para tratamento visual
+        return {}
 
+@st.cache_data(ttl=600)
+def buscar_gastos(id_dep, ano):
+    url = f"https://dadosabertos.camara.leg.br/api/v2/deputados/{id_dep}/despesas?ano={ano}&itens=100"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code == 200:
+            dados_json = res.json()
+            if 'dados' in dados_json:
+                return dados_json['dados']
+        return []
+    except (requests.exceptions.RequestException, ValueError):
+        return []
+    
         gastos_brutos = buscar_gastos(dict_deputados[nome_sel], ano_sel)
         
         if gastos_brutos:
