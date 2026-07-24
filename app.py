@@ -193,8 +193,6 @@ with tab2:
 
     # --- APRESENTAÇÃO DINÂMICA EM MASSA ---
     if not df_filtrado_t2.empty:
-    # --- APRESENTAÇÃO DINÂMICA EM MASSA ---
-    if not df_filtrado_t2.empty:
         st.markdown("### 📊 Gráfico Dinâmico de Gastos por Rubrica no Período Selecionado")
         
         # Agrupamento para consolidar o gráfico de barras
