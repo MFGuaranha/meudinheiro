@@ -20,7 +20,7 @@ with tab1:
     st.header("🔍 Despesas Reais de Deputados Federais")
     st.write("Consulta direta à API oficial da Câmara dos Deputados.")
 
-        @st.cache_data(ttl=300)
+    @st.cache_data(ttl=300)
     def buscar_gastos_reais_camara(id_dep, ano):
         if not id_dep:
             return []
