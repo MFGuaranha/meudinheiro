@@ -121,39 +121,99 @@ def buscar_gastos(id_dep, ano):
     else:
         st.error("Erro ao conectar com os servidores da Câmara dos Deputados.")
 
-# --- ABA 2: DESTINAÇÃO SETORIAL E GRÁFICOS DINÂMICOS (SAÚDE VS EDUCAÇÃO) ---
+# --- ABA 2: DESTINAÇÃO SETORIAL COMPLETA COM GRÁFICOS DINÂMICOS E FILTROS TOTAIS ---
 with tab2:
-    st.header("📊 Comparativo Orçamentário e Destinação Setorial")
-    st.write("Monitore a proporção de verbas alocadas para as principais pastas sociais do Governo.")
+    st.header("📊 Painel Orçamentário Global (Todas as Áreas)")
+    st.write("Filtre o orçamento por áreas ministeriais (combobox) ou pesquise subfunções e favorecidos via caixa de texto.")
     
-    # Base de dados estruturada a partir do Siga Brasil / Transferegov
+    # 1. Base de dados expandida com múltiplos ministérios e áreas de governo
     @st.cache_data(ttl=3600)
-    def obter_dados_setoriais():
+    def obter_dados_setoriais_completos():
         return [
             {"Área": "Saúde", "Subfunção": "Atenção Básica", "Favorecido": "Fundo Municipal de Saúde - SP", "Valor (R$)": 1200000.00, "Status": "Pago"},
             {"Área": "Saúde", "Subfunção": "Assistência Hospitalar", "Favorecido": "Santa Casa de Misericórdia - RJ", "Valor (R$)": 850000.00, "Status": "Em execução"},
             {"Área": "Educação", "Subfunção": "Ensino Superior", "Favorecido": "Universidade Federal - UFMG", "Valor (R$)": 2100000.00, "Status": "Concluído"},
             {"Área": "Educação", "Subfunção": "Educação Infantil", "Favorecido": "Prefeitura de Manaus - AM", "Valor (R$)": 600000.00, "Status": "Licitação"},
-            {"Área": "Saúde", "Subfunção": "Vigilância Sanitária", "Favorecido": "Fundo Estadual - CE", "Valor (R$)": 450000.00, "Status": "Pago"},
-            {"Área": "Educação", "Subfunção": "Ensino Profissional", "Favorecido": "Instituto Federal - IFSP", "Valor (R$)": 1300000.00, "Status": "Pago"}
+            {"Área": "Educação", "Subfunção": "Ensino Profissional", "Favorecido": "Instituto Federal - IFSP", "Valor (R$)": 1300000.00, "Status": "Pago"},
+            {"Área": "Segurança Pública", "Subfunção": "Policiamento Ostensivo", "Favorecido": "Secretaria de Segurança - RS", "Valor (R$)": 950000.00, "Status": "Pago"},
+            {"Área": "Segurança Pública", "Subfunção": "Defesa Civil", "Favorecido": "Corpo de Bombeiros - MG", "Valor (R$)": 400000.00, "Status": "Em execução"},
+            {"Área": "Transporte", "Subfunção": "Infraestrutura Rodoviária", "Favorecido": "DNIT / BR-116", "Valor (R$)": 4500000.00, "Status": "Em execução"},
+            {"Área": "Transporte", "Subfunção": "Transporte Urbano", "Favorecido": "Metrô de Salvador - BA", "Valor (R$)": 3200000.00, "Status": "Concluído"},
+            {"Área": "Assistência Social", "Subfunção": "Proteção Social Básica", "Favorecido": "Fundo de Assistência - MA", "Valor (R$)": 750000.00, "Status": "Pago"},
+            {"Área": "Habitação", "Subfunção": "Habitação Urbana", "Favorecido": "Conjunto Residencial - CE", "Valor (R$)": 1800000.00, "Status": "Licitação"},
+            {"Área": "Ciência e Tecnologia", "Subfunção": "Desenvolvimento Tecnológico", "Favorecido": "CNPq / Bolsas de Pesquisa", "Valor (R$)": 1150000.00, "Status": "Pago"}
         ]
         
-    df_setorial = pd.DataFrame(obter_dados_setoriais())
+    df_completo = pd.DataFrame(obter_dados_setoriais_completos())
     
-    # --- FUNCIONALIDADE 1: GRÁFICO DE BARRAS DINÂMICO ---
-    st.markdown("### 🏛️ Comparativo Direto: Saúde vs. Educação")
+    # Extrai automaticamente todas as áreas únicas existentes na base para criar o Combobox
+    lista_areas_disponiveis = sorted(df_completo['Área'].unique().tolist())
     
-    # Agrupa os valores para gerar a comparação agregada de investimento por área
-    df_grafico = df_setorial.groupby('Área')['Valor (R$)'].sum().reset_index()
+    # Interface de Filtros Combinados (Combobox + Digitação)
+    c1, c2 = st.columns(2)
+    with c1:
+        # Combobox dinâmico multiselect - se deixar vazio, exibe todas
+        areas_selecionadas = st.multiselect(
+            "📁 Selecione as Áreas Governamentais (Rubricas):",
+            options=lista_areas_disponiveis,
+            default=None,
+            placeholder="Todas as áreas selecionadas"
+        )
+    with c2:
+        # Caixa de texto para digitação livre (filtra favorecido ou subfunção)
+        termo_busca_setorial = st.text_input(
+            "💡 Digite palavras-chave (ex: Nome de prefeitura, UFMG, Rodoviária, Hospital):",
+            key="busca_setorial"
+        )
+        
+    # --- PROCESSO DE FILTRAGEM SEQUENCIAL ---
+    df_filtrado = df_completo.copy()
     
-    # Renderização do gráfico de barras nativo e responsivo do Streamlit
-    st.bar_chart(
-        data=df_grafico,
-        x='Área',
-        y='Valor (R$)',
-        use_container_width=True
-    )
-    
-    # Detalhes das subfunções em formato de tabela aberta
-    st.markdown("### Detalhamento das Aplicações por Subfunção")
-    st.dataframe(df_setorial, hide_index=True, use_container_width=True)
+    # Filtro 1: Pelo Combobox (Se o usuário escolheu áreas específicas)
+    if areas_selecionadas:
+        df_filtrado = df_filtrado[df_filtrado['Área'].isin(areas_selecionadas)]
+        
+    # Filtro 2: Pela caixa de texto livre (Ignorando maiúsculas e minúsculas)
+    if termo_busca_setorial:
+        criterio_texto = (
+            df_filtrado['Subfunção'].str.contains(termo_busca_setorial, case=False, na=False) |
+            df_filtrado['Favorecido'].str.contains(termo_busca_setorial, case=False, na=False) |
+            df_filtrado['Status'].str.contains(termo_busca_setorial, case=False, na=False)
+        )
+        df_filtrado = df_filtrado[criterio_texto]
+        
+    # --- RENDERIZAÇÃO DOS RESULTADOS ---
+    if not df_filtrado.empty:
+        # Gráfico de Barras Dinâmico - Ele se adapta automaticamente à filtragem do usuário
+        st.markdown("### 📈 Distribuição do Orçamento Filtrado")
+        
+        # Agrupa os valores para somar por área de acordo com o filtro aplicado
+        df_grafico_dinamico = df_filtrado.groupby('Área')['Valor (R$)'].sum().reset_index()
+        
+        st.bar_chart(
+            data=df_grafico_dinamico,
+            x='Área',
+            y='Valor (R$)',
+            use_container_width=True
+        )
+        
+        # Métricas e Exportação Excel/CSV da tabela setorial
+        col_m1, col_m2 = st.columns([2, 1])
+        with col_m1:
+            st.metric("Total Alocado nos Filtros Atuais", f"R$ {df_filtrado['Valor (R$)'].sum():,.2f}")
+        with col_m2:
+            # Botão de download para a tabela filtrada
+            csv_setorial = df_filtrado.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Baixar Dados Filtrados (CSV/Excel)",
+                data=csv_setorial,
+                file_name="orcamento_setorial_filtrado.csv",
+                mime="text/csv"
+            )
+            
+        # Exibição da tabela final
+        st.markdown("### 📋 Listagem Detalhada de Aplicações")
+        st.dataframe(df_filtrado, hide_index=True, use_container_width=True)
+        
+    else:
+        st.warning("⚠️ Nenhum registro encontrado para os filtros selecionados. Tente ajustar o texto ou as rubricas.")
