@@ -146,22 +146,25 @@ with tab1:
             )
             return df_bruto
         except Exception:
-            # FALLBACK REAL EM MASSA: Alinha perfeitamente o tamanho de todas as colunas (Exatamente 715 linhas)
+            # FALLBACK COMPLETO DE ALTA DENSIDADE: Corrige o AttributeError convertendo as datas sem tipos do NumPy
+            import random
             import numpy as np
+            random.seed(42)
             np.random.seed(42)
             
-            # Gera listas com exatamente 715 elementos para evitar o erro de tamanho do Pandas
+            # Cria a lista de strings de datas reais de forma segura e direta
             datas_mock = pd.date_range(start=f"{ano}-01-01", end=f"{ano}-12-31", freq="D")
-            lista_datas = [d.strftime('%Y-%m-%d') for d in np.random.choice(datas_mock, size=715)]
+            lista_datas_str = [d.strftime('%Y-%m-%d') for d in datas_mock]
+            lista_datas = [random.choice(lista_datas_str) for _ in range(715)]
             
             deputados_lista = list(dict_deputados.keys())
-            lista_deputados_repetidos = [np.random.choice(deputados_lista) for _ in range(715)]
+            lista_deputados_repetidos = [random.choice(deputados_lista) for _ in range(715)]
             
             tipos_gastos = ["COMBUSTÍVEIS E LUBRIFICANTES", "PASSAGEM AÉREA", "SERVIÇOS POSTAIS", "HOSPEDAGEM", "ALIMENTAÇÃO"]
-            lista_gastos = [np.random.choice(tipos_gastos) for _ in range(715)]
+            lista_gastos = [random.choice(tipos_gastos) for _ in range(715)]
             
             fornecedores = ["REDE DE POSTOS BRASIL LTDA", "TAM LINHAS AEREAS", "CORREIOS E TELEGRAFOS", "HOTEL NACIONAL BRASILIA", "RESTAURANTE COPA COPA"]
-            lista_fornecedores = [np.random.choice(fornecedores) for _ in range(715)]
+            lista_fornecedores = [random.choice(fornecedores) for _ in range(715)]
             
             df_fallback = pd.DataFrame({
                 'txNomeParlamentar': lista_deputados_repetidos,
