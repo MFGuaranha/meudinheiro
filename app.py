@@ -119,7 +119,7 @@ with tab2:
         subfuncoes = {
             "Saúde": ["Atenção Básica", "Média e Alta Complexidade", "Vigilância Sanitária"],
             "Educação": ["Ensino Superior", "Educação Infantil", "Ensino Profissionalizante"],
-            "Segurança Pública": ["Policiamento Ostensivo", "Defesa Civil", "Inteligência'],
+            "Segurança Pública": ["Policiamento Ostensivo", "Defesa Civil", "Inteligência"],
             "Ciência e Tecnologia": ["Desenvolvimento Científico", "Inovação Tecnológica"],
             "Transporte": ["Infraestrutura Rodoviária", "Transporte Urbano"],
             "Assistência Social": ["Proteção Social", "Segurança Alimentar"],
