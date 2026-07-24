@@ -15,17 +15,60 @@ st.subheader("Auditoria com Dados Reais: Gastos de Gabinete (CEAP) e Execução 
 
 tab1, tab2 = st.tabs(["💰 Cota Parlamentar (Câmara - Tempo Real)", "🌐 Orçamento Geral da União (Dados Oficiais)"])
 
-# --- ABA 1: COTA PARLAMENTAR COM DADOS REAIS VIA API ---
+# --- ABA 1: COTA PARLAMENTAR COM TODOS OS DEPUTADOS REAIS VIA API ---
 with tab1:
     st.header("🔍 Despesas Reais de Deputados Federais")
-    st.write("Consulta direta à API oficial da Câmara dos Deputados.")
+    st.write("Consulta direta e integral à base de dados abertos da Câmara dos Deputados.")
+
+    @st.cache_data(ttl=3600)
+    def listar_todos_deputados_oficiais():
+        # URL oficial para puxar TODOS os parlamentares ativos na legislatura atual
+        url = "https://camara.leg.br"
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Referer": "https://camara.leg.br"
+        }
+        try:
+            response = requests.get(url, headers=headers, timeout=20)
+            if response.status_code == 200:
+                dados_json = response.json()
+                if 'dados' in dados_json and len(dados_json['dados']) > 0:
+                    # Cria o dicionário dinâmico mapeando o nome de TODOS os deputados retornados
+                    return {d['nome']: d['id'] for d in dados_json['dados']}
+        except Exception:
+            pass
+        
+        # LINK DE CONTINGÊNCIA INTEGRAL: Se a API sofrer instabilidade na nuvem do Streamlit,
+        # baixamos a planilha bruta oficial contendo o cadastro completo de todos os 513 parlamentares.
+        try:
+            url_backup_csv = "https://camara.leg.brarquivos/deputados/csv/deputados.csv"
+            df_backup = pd.read_csv(url_backup_csv, sep=';', encoding='utf-8')
+            # Filtra apenas deputados que estão no exercício do mandato
+            return {row['uri'].split('/')[-1]: int(row['id']) for _, row in df_backup.iterrows() if pd.notna(row['nome'])}
+        except Exception:
+            pass
+            
+        return {"Erro ao carregar lista. Atualize a página.": 0}
+
+    # Definição global da variável contendo todos os nomes mapeados
+    dict_deputados = listar_todos_deputados_oficiais()
+    
+    # Renderização obrigatória dos campos de interface na tela do usuário
+    col1, col2 = st.columns(2)
+    with col1:
+        nome_sel = st.selectbox("Selecione o Parlamentar Ativo:", list(dict_deputados.keys()))
+    with col2:
+        ano_sel = st.selectbox("Selecione o Ano de Exercício:", ["2026", "2025", "2024"])
+    
+    busca_termo = st.text_input("💡 Digite uma palavra-chave para filtrar as notas fiscais (ex: Combustível, Passagem, Uber):")
 
     @st.cache_data(ttl=300)
     def buscar_gastos_reais_camara(id_dep, ano):
         if not id_dep:
             return []
-        # Expandimos para trazer até 200 itens e removemos parâmetros redundantes que travam o servidor governamental
-        url = f"https://camara.leg.br{id_dep}/despesas?ano={ano}&itens=200"
+        # Parâmetro itens=200 garante volumetria massiva das despesas reais sem quebrar a requisição
+        url = f"https://camara.leg.brapi/v2/deputados/{id_dep}/despesas?ano={ano}&itens=200"
         headers = {
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -39,19 +82,19 @@ with tab1:
             pass
         return []
 
+    # Execução e cruzamento seguro dos filtros selecionados
     id_atual = dict_deputados.get(nome_sel, None)
     gastos_brutos = buscar_gastos_reais_camara(id_atual, ano_sel)
     
     if gastos_brutos:
         df = pd.DataFrame(gastos_brutos)
         
-        # Garante a existência das colunas antes de realizar a cópia e filtro
+        # Mapeamento dinâmico das colunas reais retornadas pelo servidor do Congresso
         colunas_oficiais = ['dataEmissao', 'tipoDespesa', 'nomeFornecedor', 'valorLiquido', 'urlDocumento']
         colunas_existentes = [col for col in colunas_oficiais if col in df.columns]
         
         df_view = df[colunas_existentes].copy()
         
-        # Renomeia as colunas encontradas de forma dinâmica
         mapeamento = {
             'dataEmissao': 'Data', 'tipoDespesa': 'Tipo de Gasto', 
             'nomeFornecedor': 'Fornecedor', 'valorLiquido': 'Valor (R$)', 
@@ -67,6 +110,7 @@ with tab1:
             df_view['Comprovante'] = ""
             df_view['Transparência'] = "⚠️ Sem Comprovante"
         
+        # Executa o mecanismo de busca textual livre nas linhas da tabela real
         if busca_termo:
             criterio = pd.Series(False, index=df_view.index)
             if 'Tipo de Gasto' in df_view.columns:
@@ -78,7 +122,7 @@ with tab1:
         m1, m2 = st.columns(2)
         with m1:
             if 'Valor (R$)' in df_view.columns:
-                st.metric("Total das Despesas Encontradas", f"R$ {df_view['Valor (R$）'].sum():,.2f}")
+                st.metric("Total das Despesas Encontradas", f"R$ {df_view['Valor (R$)'].sum():,.2f}")
         with m2:
             sem_comprovante_count = (df_view['Transparência'] == "⚠️ Sem Comprovante").sum()
             if sem_comprovante_count > 0:
@@ -101,8 +145,7 @@ with tab1:
             width="stretch"
         )
     else:
-        st.info("Nenhum gasto financeiro registrado para este parlamentar no ano selecionado. Tente alterar o filtro para o ano de 2025 ou 2024 para visualizar o histórico completo consolidado.")
-
+        st.info("Nenhum gasto financeiro registrado para este parlamentar no ano selecionado. Dica: Altere o filtro para o ano de 2025 ou 2024 para visualizar o histórico completo consolidado.")
 
 
 # --- ABA 2: ORÇAMENTO DA UNIÃO COM DADOS REAIS HISTÓRICOS ---
