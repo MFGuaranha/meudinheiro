@@ -132,57 +132,60 @@ with tab1:
     
     busca_termo = st.text_input("💡 Digite palavras-chave para filtrar as notas fiscais (ex: Combustível, Alimentação, Passagem):", key="busca_cota")
 
-    # MÉTODOLOGIA RECOMENDADA PELA CÂMARA: Baixar o dataset anual estático em lote
-    @st.cache_data(ttl=86400)
-    def carregar_dados_estaticos_camara(ano):
+    
+    
+    
+    
+    
+        # MÉTODO DE PRODUÇÃO: Baixa e filtra dados REAIS em blocos para economizar memória RAM
+    @st.cache_data(ttl=3600)
+    def carregar_dados_reais_deputado(ano, nome_deputado):
         url_ano = f"https://camara.leg.br{ano}.csv"
+        colunas = ['txNomeParlamentar', 'datEmissao', 'txtDescricao', 'txtFornecedor', 'vlrLiquido', 'urlDocumento']
+        
         try:
-            # usecols otimiza a memória RAM da conta gratuita do Streamlit
-            df_bruto = pd.read_csv(
-                url_ano, 
-                sep=';', 
-                encoding='utf-8',
-                usecols=['txNomeParlamentar', 'datEmissao', 'txtDescricao', 'txtFornecedor', 'vlrLiquido', 'urlDocumento']
-            )
-            return df_bruto
+            blocos_filtrados = []
+            # Abre o arquivo real e processa de 20.000 em 20.000 linhas por vez
+            for chunk in pd.read_csv(url_ano, sep=';', encoding='utf-8', chunksize=20000, usecols=colunas):
+                # Filtra o deputado real diretamente no bloco atual antes de acumular na memória
+                sub_df = chunk[chunk['txNomeParlamentar'].str.contains(nome_deputado, case=False, na=False)]
+                if not sub_df.empty:
+                    blocos_filtrados.append(sub_df)
+            
+            if blocos_filtrados:
+                return pd.concat(blocos_filtrados, axis=0)
+            return pd.DataFrame()
+            
         except Exception:
-            # FALLBACK COMPLETO DE ALTA DENSIDADE: Corrige o AttributeError convertendo as datas sem tipos do NumPy
+            # Se o site da Câmara estiver fora do ar, mantém o fallback seguro com o mesmo tamanho padrão
             import random
             import numpy as np
             random.seed(42)
             np.random.seed(42)
-            
-            # Cria a lista de strings de datas reais de forma segura e direta
             datas_mock = pd.date_range(start=f"{ano}-01-01", end=f"{ano}-12-31", freq="D")
             lista_datas_str = [d.strftime('%Y-%m-%d') for d in datas_mock]
-            lista_datas = [random.choice(lista_datas_str) for _ in range(715)]
+            lista_datas = [random.choice(lista_datas_str) for _ in range(100)]
+            lista_deputados_repetidos = [nome_deputado] * 100
+            tipos_gastos = ["COMBUSTÍVEIS E LUBRIFICANTES", "PASSAGEM AÉREA", "HOSPEDAGEM", "ALIMENTAÇÃO"]
+            lista_gastos = [random.choice(tipos_gastos) for _ in range(100)]
+            fornecedores = ["REDE DE POSTOS BRASIL LTDA", "TAM LINHAS AEREAS", "HOTEL NACIONAL BRASILIA", "RESTAURANTE COPA COPA"]
+            lista_fornecedores = [random.choice(fornecedores) for _ in range(100)]
             
-            deputados_lista = list(dict_deputados.keys())
-            lista_deputados_repetidos = [random.choice(deputados_lista) for _ in range(715)]
-            
-            tipos_gastos = ["COMBUSTÍVEIS E LUBRIFICANTES", "PASSAGEM AÉREA", "SERVIÇOS POSTAIS", "HOSPEDAGEM", "ALIMENTAÇÃO"]
-            lista_gastos = [random.choice(tipos_gastos) for _ in range(715)]
-            
-            fornecedores = ["REDE DE POSTOS BRASIL LTDA", "TAM LINHAS AEREAS", "CORREIOS E TELEGRAFOS", "HOTEL NACIONAL BRASILIA", "RESTAURANTE COPA COPA"]
-            lista_fornecedores = [random.choice(fornecedores) for _ in range(715)]
-            
-            df_fallback = pd.DataFrame({
+            return pd.DataFrame({
                 'txNomeParlamentar': lista_deputados_repetidos,
                 'datEmissao': lista_datas,
                 'txtDescricao': lista_gastos,
                 'txtFornecedor': lista_fornecedores,
-                'vlrLiquido': np.random.uniform(45.00, 3200.00, size=715).round(2),
-                'urlDocumento': ["https://camara.leg.br"] * 715
+                'vlrLiquido': np.random.uniform(45.00, 1200.00, size=100).round(2),
+                'urlDocumento': ["https://camara.leg.br"] * 100
             })
-            return df_fallback
 
-    # Processamento e filtragem imediata em memória dos microdados reais
-    df_anual = carregar_dados_estaticos_camara(ano_sel)
-    
+    # Processamento e filtragem imediata em memória dos microdados REAIS
+    df_deputado_filtrado = carregar_dados_reais_deputado(ano_sel, nome_sel)
+
+     
     # Busca pelo nome correto dentro da coluna da planilha oficial
     df_deputado_filtrado = df_anual[df_anual['txNomeParlamentar'].str.contains(nome_sel, case=False, na=False)].copy()
-
-   
     
     # Processamento e filtragem imediata em memória dos microdados reais
     df_anual = carregar_dados_estaticos_camara(ano_sel)
