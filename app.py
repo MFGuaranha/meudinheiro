@@ -193,22 +193,33 @@ with tab2:
 
     # --- APRESENTAÇÃO DINÂMICA EM MASSA ---
     if not df_filtrado_t2.empty:
-        st.markdown("### 📊 Gráfico Dinâmico de Gastos por Rubrica no Período Selecionado")
+        st.markdown("### 📊 Distribuição Orçamentária Subdividida por Favorecidos")
+        st.write("O gráfico abaixo agrupa os gastos por Rubrica, mas divide a barra em cores diferentes para cada órgão/município favorecido.")
         
-        # Agrupamento para consolidar o gráfico de barras
-        df_grafico_t2 = df_filtrado_t2.groupby('Rubrica (Função)')['Valor Destinado (R$)'].sum().reset_index()
-        st.bar_chart(data=df_grafico_t2, x='Rubrica (Função)', y='Valor Destinado (R$)', use_container_width=True)
+        # 1. Agrupamento detalhado por Rubrica E por Favorecido simultaneamente
+        df_grafico_detalhado = df_filtrado_t2.groupby(
+            ['Rubrica (Função)', 'Favorecido (Destino)']
+        )['Valor Destinado (R$)'].sum().reset_index()
+        
+        # 2. Renderização do gráfico empilhado (Segmentado por Favorecido)
+        st.bar_chart(
+            data=df_grafico_detalhado, 
+            x='Rubrica (Função)', 
+            y='Valor Destinado (R$)', 
+            color='Favorecido (Destino)',  # ISSO CRIA A SUBDIVISÃO VISUAL
+            use_container_width=True
+        )
 
-        # Formata data para exibição limpa na tabela
+        # Formata data para exibição limpa na tabela de microdados
         df_exibir_t2 = df_filtrado_t2.copy()
         df_exibir_t2['Data do Gasto'] = df_exibir_t2['Data do Gasto'].dt.strftime('%d/%m/%Y')
 
-        # Botão de exportação
+        # Botão de exportação rápida para o usuário
         csv_t2 = df_exibir_t2.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
-            label="📥 Baixar Relatório Orçamentário Filtrado (Excel/CSV)",
+            label="📥 Baixar Relatório Detalhado por Favorecido (Excel/CSV)",
             data=csv_t2,
-            file_name="portal_transparencia_filtrado.csv",
+            file_name="portal_transparencia_favorecidos.csv",
             mime="text/csv"
         )
 
@@ -216,4 +227,3 @@ with tab2:
         st.dataframe(df_exibir_t2, hide_index=True, use_container_width=True)
     else:
         st.warning("Nenhum registro orçamentário foi encontrado para os filtros e datas selecionadas.")
-
