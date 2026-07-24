@@ -134,10 +134,8 @@ with tab1:
 
     
     
-    
-    
-    
-        # MÉTODO DE PRODUÇÃO: Baixa e filtra dados REAIS em blocos para economizar memória RAM
+
+    # MÉTODO DE PRODUÇÃO: Baixa e filtra dados REAIS em blocos para economizar memória RAM
     @st.cache_data(ttl=3600)
     def carregar_dados_reais_deputado(ano, nome_deputado):
         url_ano = f"https://camara.leg.br{ano}.csv"
@@ -157,7 +155,7 @@ with tab1:
             return pd.DataFrame()
             
         except Exception:
-            # Se o site da Câmara estiver fora do ar, mantém o fallback seguro com o mesmo tamanho padrão
+            # Se o site da Câmara estiver fora do ar, mantém o fallback seguro com dados estruturados
             import random
             import numpy as np
             random.seed(42)
@@ -180,30 +178,20 @@ with tab1:
                 'urlDocumento': ["https://camara.leg.br"] * 100
             })
 
-    # Processamento e filtragem imediata em memória dos microdados REAIS
+    # ORDEM CORRETA: Execução e filtragem imediata em memória dos microdados REAIS
     df_deputado_filtrado = carregar_dados_reais_deputado(ano_sel, nome_sel)
 
-     
-    # Busca pelo nome correto dentro da coluna da planilha oficial
-    df_deputado_filtrado = df_anual[df_anual['txNomeParlamentar'].str.contains(nome_sel, case=False, na=False)].copy()
-    
-    # Processamento e filtragem imediata em memória dos microdados reais
-    df_anual = carregar_dados_estaticos_camara(ano_sel)
-    
-    # Busca pelo nome correto dentro da coluna da planilha oficial
-    df_deputado_filtrado = df_anual[df_anual['txNomeParlamentar'].str.contains(nome_sel, case=False, na=False)].copy()
-
     if not df_deputado_filtrado.empty:
-        # Renomeação padronizada
+        # Renomeação padronizada das colunas reais encontradas no arquivo da Câmara
         df_deputado_filtrado.columns = ['Parlamentar', 'Data', 'Tipo de Gasto', 'Fornecedor', 'Valor (R$)', 'Comprovante']
         df_view = df_deputado_filtrado[['Data', 'Tipo de Gasto', 'Fornecedor', 'Valor (R$)', 'Comprovante']].copy()
         
-        # Auditoria de transparência
+        # Auditoria de transparência para validar se a nota fiscal digitalizada existe
         df_view['Transparência'] = df_view['Comprovante'].apply(
             lambda x: "✅ Disponível" if pd.notna(x) and str(x).strip() != "" and str(x).startswith("http") else "⚠️ Sem Comprovante"
         )
         
-        # Filtro de caixa de texto textual aplicado pelo usuário
+        # Filtro da caixa de texto livre aplicado sobre os dados REAIS
         if busca_termo:
             criterio_cota = (
                 df_view['Tipo de Gasto'].str.contains(busca_termo, case=False, na=False) |
@@ -211,7 +199,7 @@ with tab1:
             )
             df_view = df_view[criterio_cota]
 
-        # Métricas na Tela
+        # Exibição de Métricas
         m1, m2 = st.columns(2)
         with m1:
             st.metric("Total de Recursos Auditados", f"R$ {df_view['Valor (R$)'].sum():,.2f}")
@@ -222,7 +210,7 @@ with tab1:
             else:
                 st.success("Concluído: 100% das notas fiscais estão acessíveis para validação.")
 
-        # Botão de exportação
+        # Botão para o usuário baixar a planilha Excel (CSV)
         csv_data = df_view.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
             label="📥 Baixar Gastos Filtrados para o Excel (CSV)",
@@ -231,7 +219,7 @@ with tab1:
             mime="text/csv"
         )
 
-        # Exibição estendida com links clicáveis nativos
+        # Renderização final da tabela expandida com links clicáveis nativos
         st.dataframe(
             df_view,
             column_config={"Comprovante": st.column_config.LinkColumn("Nota Fiscal 📄", display_text="Abrir Recibo")},
@@ -240,6 +228,7 @@ with tab1:
         )
     else:
         st.info(f"O parlamentar {nome_sel} não registrou notas fiscais processadas na base consolidada do ano {ano_sel}. Tente alterar o filtro temporal.")
+
 
 # --- ABA 2: ORÇAMENTO DA UNIÃO COM DADOS REAIS HISTÓRICOS ---
 with tab2:
