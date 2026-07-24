@@ -20,6 +20,10 @@ with tab1:
     st.header("🔍 Despesas Reais de Deputados Federais")
     st.write("Consulta direta e integral à base de dados abertos da Câmara dos Deputados.")
 
+    # Definição global da variável contendo todos os nomes mapeados
+    dict_deputados = listar_todos_deputados_oficiais()
+
+    
     @st.cache_data(ttl=3600)
     def listar_todos_deputados_oficiais():
         # URL oficial para puxar TODOS os parlamentares ativos na legislatura atual
@@ -52,7 +56,7 @@ with tab1:
         return {"Erro ao carregar lista. Atualize a página.": 0}
 
     # Definição global da variável contendo todos os nomes mapeados
-    dict_deputados = listar_todos_deputados_oficiais()
+    #dict_deputados = listar_todos_deputados_oficiais()
     
     # Renderização obrigatória dos campos de interface na tela do usuário
     col1, col2 = st.columns(2)
