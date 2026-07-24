@@ -1,23 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime
-
-# Configuração global da página adotando a sintaxe moderna do Streamlit
-st.set_page_config(
-    page_title="Portal de Fiscalização Orçamentária", 
-    page_icon="🏛️", 
-    layout="wide"
-)
-
-st.title("🏛️ Portal de Fiscalização Orçamentária")
-st.subheader("Auditoria com Dados Reais: Gastos de Gabinete (CEAP) e Execução Orçamentária")
-
-tab1, tab2 = st.tabs(["💰 Cota Parlamentar (Câmara - Tempo Real)", "🌐 Orçamento Geral da União (Dados Oficiais)"])
-
-import streamlit as st
-import requests
-import pandas as pd
 import numpy as np
 
 # Configuração global da página adotando a sintaxe moderna do Streamlit
