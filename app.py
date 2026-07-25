@@ -190,61 +190,36 @@ with tab1:
     # CRUCIAL PARA O REFRESH DO ANO: O Streamlit monitora a mudança de chaves tipadas como string pura
     df_deputado_filtrado = carregar_dados_reais_deputado(str(ano_sel), str(nome_sel))
 
-
-
-
-    
-
-
-    
-
-
-
-
     # MÉTODO DE PRODUÇÃO CORRIGIDO: Força o refresh reativo ao mudar os parâmetros do combo
-    @st.cache_data(ttl=600, show_spinner="Buscando dados oficiais na Câmara dos Deputados...")
+    # MÉTODO DE PRODUÇÃO EXCLUSIVO: Filtra dados 100% REAIS. Retorna vazio para inativos.
+    @st.cache_data(ttl=3600, show_spinner="Acessando base de dados real da Câmara dos Deputados...")
     def carregar_dados_reais_deputado(ano, nome_deputado):
         url_ano = f"https://camara.leg.br{ano}.csv"
         colunas = ['txNomeParlamentar', 'datEmissao', 'txtDescricao', 'txtFornecedor', 'vlrLiquido', 'urlDocumento']
         
         try:
             blocos_filtrados = []
-            # Abre o fluxo de stream processando lotes de linhas em tempo real
+            # Abre o fluxo de stream direto do arquivo oficial do governo
+            # Processa em blocos de 30.000 linhas para não estourar o limite de 1GB de RAM do Streamlit
             for chunk in pd.read_csv(url_ano, sep=';', encoding='utf-8', chunksize=30000, usecols=colunas):
-                # O uso do 'contains' garante correspondência mesmo com acentuações ou iniciais
+                # Procura o nome do deputado exatamente como consta na planilha real da Câmara
                 sub_df = chunk[chunk['txNomeParlamentar'].str.contains(nome_deputado, case=False, na=False)]
                 if not sub_df.empty:
                     blocos_filtrados.append(sub_df)
             
+            # Se encontrar gastos reais, junta os blocos e retorna a tabela populada
             if blocos_filtrados:
                 return pd.concat(blocos_filtrados, axis=0)
+            
+            # Se não houver gastos (ex: político sem mandato no ano), retorna tabela vazia
             return pd.DataFrame()
             
-        except Exception:
-            # Fallback seguro estruturado caso o servidor da Câmara sofra timeout
-            import random
-            import numpy as np
-            random.seed(hash(nome_deputado) % 1000) # Semente dinâmica baseada no nome para variar os dados de teste
-            np.random.seed(hash(nome_deputado) % 1000)
-            datas_mock = pd.date_range(start=f"{ano}-01-01", end=f"{ano}-12-31", freq="D")
-            lista_datas_str = [d.strftime('%Y-%m-%d') for d in datas_mock]
-            lista_datas = [random.choice(lista_datas_str) for _ in range(45)]
-            lista_deputados_repetidos = [nome_deputado] * 45
-            tipos_gastos = ["COMBUSTÍVEIS E LUBRIFICANTES", "PASSAGEM AÉREA", "HOSPEDAGEM", "ALIMENTAÇÃO"]
-            lista_gastos = [random.choice(tipos_gastos) for _ in range(45)]
-            fornecedores = ["REDE DE POSTOS LOCAL", "AZUL LINHAS AEREAS", "HOTEL BRASILIA", "RESTAURANTE SÃO PAULO"]
-            lista_fornecedores = [random.choice(fornecedores) for _ in range(45)]
-            
-            return pd.DataFrame({
-                'txNomeParlamentar': lista_deputados_repetidos,
-                'datEmissao': lista_datas,
-                'txtDescricao': lista_gastos,
-                'txtFornecedor': lista_fornecedores,
-                'vlrLiquido': np.random.uniform(60.00, 1500.00, size=45).round(2),
-                'urlDocumento': ["https://camara.leg.br"] * 45
-            })
+        except Exception as e:
+            # RETORNA VAZIO EM CASO DE ERRO OU INSTABILIDADE NA REDE GOVERNAMENTAL
+            # Removemos os dados artificiais para garantir a integridade da auditoria
+            return pd.DataFrame()
 
-    # GATILHO REATIVO: Passar as variáveis diretamente força o Streamlit a quebrar o cache antigo e dar refresh
+    # Execução direta com as variáveis da tela convertidas para texto limpo
     df_deputado_filtrado = carregar_dados_reais_deputado(str(ano_sel), str(nome_sel))
 
     if not df_deputado_filtrado.empty:
