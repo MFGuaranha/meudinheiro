@@ -53,63 +53,81 @@ with tab1:
         "Vander Loubet": 74376, "Vicentinho": 74165, "Vinicius Carvalho": 141555, "Wellington Roberto": 74045, "Zeca Dirceu": 160592
     }
 
+    # RENDERIZAÇÃO DOS COMBOS DE SELEÇÃO
     col1, col2 = st.columns(2)
     with col1:
         nome_sel = st.selectbox("Selecione o Parlamentar Ativo (Lista Oficial):", options=sorted(list(dict_deputados.keys())), key="parlamentar_combo")
     with col2:
-        # 2025 e 2024 possuem dados completos e consolidados para auditoria estável
         ano_sel = st.selectbox("Selecione o Ano de Exercício:", options=["2025", "2024", "2026"], key="ano_combo")
     
     busca_termo = st.text_input("💡 Digite palavras-chave para filtrar as notas fiscais (ex: Combustível, Passagem, Uber):", key="busca_cota")
 
-    # METODOLOGIA REVISADA: URL e colunas oficiais em conformidade com o Portal de Dados Abertos
-    @st.cache_data(ttl=3600, show_spinner="Baixando e filtrando a planilha real do servidor da Câmara...")
-    def carregar_dados_reais_deputado(ano, nome_deputado):
-        # Nova URL oficial estável para download dos arquivos anuais consolidados da CEAP
-        url_ano = f"https://camara.leg.br{ano}.csv"
+    # NOVA FUNÇÃO AUTOMATIZADA: Consome a API REST paginada e leve da Câmara
+    @st.cache_data(ttl=600, show_spinner="Consultando despesas reais na API de Dados Abertos da Câmara...")
+    def buscar_gastos_api_direta(id_deputado, ano):
+        if not id_deputado:
+            return pd.DataFrame()
+            
+        url = f"https://camara.leg.br{id_deputado}/despesas?ano={ano}&itens=100&ordem=DESC&ordenarPor=dataEmissao"
         
-        # Mapeamento exato das colunas estruturadas do arquivo bruto oficial
-        colunas_oficiais = ['txNomeParlamentar', 'datEmissao', 'txtDescricao', 'txtFornecedor', 'vlrLiquido', 'urlDocumento']
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "Accept-Encoding": "gzip, deflate, br"
+        }
         
         try:
-            blocos_filtrados = []
-            # Abre o stream com tratamento de codificação universal e separador padrão do governo (ponto e vírgula)
-            for chunk in pd.read_csv(url_ano, sep=';', encoding='utf-8', on_bad_lines='skip', chunksize=25000, usecols=colunas_oficiais):
-                # Localização textual precisa do parlamentar selecionado
-                sub_df = chunk[chunk['txNomeParlamentar'].str.contains(nome_deputado, case=False, na=False)]
-                if not sub_df.empty:
-                    blocos_filtrados.append(sub_df)
-            
-            if blocos_filtrados:
-                return pd.concat(blocos_filtrados, axis=0)
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                dados_json = response.json()
+                lista_despesas = dados_json.get('dados', [])
+                if lista_despesas:
+                    return pd.DataFrame(lista_despesas)
             return pd.DataFrame()
         except Exception:
             return pd.DataFrame()
 
-    # Execução e processamento dos dados em tempo real
-    df_deputado_filtrado = carregar_dados_reais_deputado(str(ano_sel), str(nome_sel))
+    # Chamada automatizada e reativa monitorada pelo Streamlit
+    id_atual = dict_deputados.get(nome_sel, None)
+    df_deputado_filtrado = buscar_gastos_api_direta(id_atual, ano_sel)
 
-    # AVALIAÇÃO DOS DADOS REAIS ENCONTRADOS
+    # TRATAMENTO E EXIBIÇÃO DOS MICRODADOS REAIS
     if not df_deputado_filtrado.empty:
-        # Ajusta e padroniza as colunas de visualização na interface
-        df_deputado_filtrado.columns = ['Parlamentar', 'Data', 'Tipo de Gasto', 'Fornecedor', 'Valor (R$)', 'Comprovante']
-        df_view = df_deputado_filtrado[['Data', 'Tipo de Gasto', 'Fornecedor', 'Valor (R$)', 'Comprovante']].copy()
+        colunas_json = ['dataEmissao', 'tipoDespesa', 'nomeFornecedor', 'valorLiquido', 'urlDocumento']
+        colunas_existentes = [c for c in colunas_json if c in df_deputado_filtrado.columns]
         
-        # Validação de links reais de notas fiscais digitadas
-        df_view['Transparência'] = df_view['Comprovante'].apply(
-            lambda x: "✅ Disponível" if pd.notna(x) and str(x).strip() != "" and str(x).startswith("http") else "⚠️ Sem Comprovante"
-        )
+        df_view = df_deputado_filtrado[colunas_existentes].copy()
         
-        if busca_termo:
-            criterio_cota = (
-                df_view['Tipo de Gasto'].str.contains(busca_termo, case=False, na=False) |
-                df_view['Fornecedor'].str.contains(busca_termo, case=False, na=False)
+        mapeamento = {
+            'dataEmissao': 'Data', 'tipoDespesa': 'Tipo de Gasto', 
+            'nomeFornecedor': 'Fornecedor', 'valorLiquido': 'Valor (R$)', 
+            'urlDocumento': 'Comprovante'
+        }
+        df_view.rename(columns={k: v for k, v in mapeamento.items() if k in df_view.columns}, inplace=True)
+        
+        # Garante que a coluna de Comprovante exista para criar o alerta de Transparência
+        if 'Comprovante' in df_view.columns:
+            df_view['Transparência'] = df_view['Comprovante'].apply(
+                lambda x: "✅ Disponível" if pd.notna(x) and str(x).strip() != "" and str(x).startswith("http") else "⚠️ Sem Comprovante"
             )
+        else:
+            df_view['Comprovante'] = ""
+            df_view['Transparência'] = "⚠️ Sem Comprovante"
+        
+        # Filtro textual aplicado pelo usuário
+        if busca_termo:
+            criterio_cota = pd.Series(False, index=df_view.index)
+            if 'Tipo de Gasto' in df_view.columns:
+                criterio_cota |= df_view['Tipo de Gasto'].str.contains(busca_termo, case=False, na=False)
+            if 'Fornecedor' in df_view.columns:
+                criterio_cota |= df_view['Fornecedor'].str.contains(busca_termo, case=False, na=False)
             df_view = df_view[criterio_cota]
 
+        # Métricas na Tela
         m1, m2 = st.columns(2)
         with m1:
-            st.metric("Total de Recursos Auditados", f"R$ {df_view['Valor (R$)'].sum():,.2f}")
+            if 'Valor (R$)' in df_view.columns:
+                st.metric("Total de Recursos Auditados", f"R$ {df_view['Valor (R$)'].sum():,.2f}")
         with m2:
             sem_comp = (df_view['Transparência'] == "⚠️ Sem Comprovante").sum()
             if sem_comp > 0:
@@ -117,6 +135,7 @@ with tab1:
             else:
                 st.success("Concluído: 100% das notas fiscais estão acessíveis para validação.")
 
+        # Botão de exportação para Excel
         csv_data = df_view.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
             label="📥 Baixar Gastos Filtrados para o Excel (CSV)",
@@ -125,6 +144,7 @@ with tab1:
             mime="text/csv"
         )
 
+        # Exibição estendida com a propriedade width de layout fluido exigida pelo log
         st.dataframe(
             df_view,
             column_config={"Comprovante": st.column_config.LinkColumn("Nota Fiscal 📄", display_text="Abrir Recibo")},
@@ -132,8 +152,7 @@ with tab1:
             width="stretch"
         )
     else:
-        st.info(f"O parlamentar {nome_sel} não possui registros de gastos reais na base consolidada da Câmara no ano {ano_sel}. Dica: Altere o combo acima para o ano de 2025 ou 2024 para visualizar o histórico completo.")
-
+        st.info(f"O parlamentar {nome_sel} não possui registros de gastos reais na base oficial da Câmara no ano {ano_sel}.")
 
 # --- ABA 2: ORÇAMENTO DA UNIÃO COM DADOS REAIS HISTÓRICOS ---
 with tab2:
