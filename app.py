@@ -62,24 +62,32 @@ with tab1:
     
     busca_termo = st.text_input("💡 Digite palavras-chave para filtrar as notas fiscais (ex: Combustível, Passagem, Uber):", key="busca_cota")
 
-    # NOVA FUNÇÃO AUTOMATIZADA: Consome a API REST paginada e leve da Câmara
+    # NOVA FUNÇÃO AUTOMATIZADA: Garante a extração correta da chave 'dados' do JSON
     @st.cache_data(ttl=600, show_spinner="Consultando despesas reais na API de Dados Abertos da Câmara...")
     def buscar_gastos_api_direta(id_deputado, ano):
         if not id_deputado:
             return pd.DataFrame()
             
-        url = f"https://camara.leg.br{id_deputado}/despesas?ano={ano}&itens=100&ordem=DESC&ordenarPor=dataEmissao"
+        url = f"https://camara.leg.br{id_deputado}/despesas"
+        
+        # Parâmetros explícitos exigidos pela API REST para indexação correta
+        params = {
+            "ano": str(ano),
+            "itens": "100",
+            "ordem": "DESC",
+            "ordenarPor": "dataEmissao"
+        }
         
         headers = {
             "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            "Accept-Encoding": "gzip, deflate, br"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
         }
         
         try:
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             if response.status_code == 200:
                 dados_json = response.json()
+                # CORREÇÃO CRUCIAL: Acessa a lista de registros aninhada na chave 'dados'
                 lista_despesas = dados_json.get('dados', [])
                 if lista_despesas:
                     return pd.DataFrame(lista_despesas)
@@ -104,6 +112,10 @@ with tab1:
             'urlDocumento': 'Comprovante'
         }
         df_view.rename(columns={k: v for k, v in mapeamento.items() if k in df_view.columns}, inplace=True)
+        
+        # Limpa as datas para exibir apenas o formato dia/mês/ano sem carimbos de hora do servidor
+        if 'Data' in df_view.columns:
+            df_view['Data'] = df_view['Data'].apply(lambda x: str(x).split('T')[0] if pd.notna(x) else "")
         
         # Garante que a coluna de Comprovante exista para criar o alerta de Transparência
         if 'Comprovante' in df_view.columns:
@@ -144,7 +156,6 @@ with tab1:
             mime="text/csv"
         )
 
-        # Exibição estendida com a propriedade width de layout fluido exigida pelo log
         st.dataframe(
             df_view,
             column_config={"Comprovante": st.column_config.LinkColumn("Nota Fiscal 📄", display_text="Abrir Recibo")},
