@@ -66,7 +66,8 @@ with tab1:
     @st.cache_data(ttl=600, show_spinner="Buscando e extraindo todas as notas e fornecedores da base oficial...")
     def buscar_gastos_dinamicos_reais(id_deputado, nome_deputado, ano):
         # Tentativa 1: API REST Governamental Direta (Pede dados em lotes leves JSON)
-        url_api = f"https://camara.leg.br{id_deputado}/despesas?ano={ano}&itens=100"
+        #url_api = f"https://camara.leg.br{id_deputado}/despesas?ano={ano}&itens=100"
+        url_api = f"https://camara.leg.br{id_deputado}/despesas?ano={ano}"
         headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
         
         try:
